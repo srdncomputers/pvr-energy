@@ -10,7 +10,7 @@
     { id:5, url:'https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?w=800&q=80', caption:'Solar Panel Installation' },
     { id:6, url:'https://images.unsplash.com/photo-1548425279-81d7f44f8ad6?w=800&q=80', caption:'Water Heater System' },
   ];
-
+a
   let showAdmin = false;
   let adminPass = '';
   let adminLoggedIn = false;
