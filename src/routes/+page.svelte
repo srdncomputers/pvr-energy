@@ -1,48 +1,129 @@
 <script>
   import { onMount } from 'svelte';
+  import Carousel from '$lib/Carousel.svelte';
 
-  let galleryImages = [
-    { id:1, url:'https://images.unsplash.com/photo-1509391366360-2e959784a276?w=800&q=80', caption:'Rooftop Solar — Electronic City' },
-    { id:2, url:'https://images.unsplash.com/photo-1508514177221-188b1cf16e9d?w=800&q=80', caption:'Residential Installation — Anekal' },
-    { id:3, url:'https://images.unsplash.com/photo-1558449028-b53a39d100fc?w=800&q=80', caption:'Commercial Solar — Attibele' },
-    { id:4, url:'https://images.unsplash.com/photo-1466611653911-95081537e5b7?w=800&q=80', caption:'Solar Farm — Bangalore Rural' },
-    { id:5, url:'https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?w=800&q=80', caption:'Solar Panel Installation' },
-    { id:6, url:'https://images.unsplash.com/photo-1548425279-81d7f44f8ad6?w=800&q=80', caption:'Water Heater System' },
-  ];
+  // Public gallery (fetched from /api/gallery — published items only)
+  let galleryImages = [];
+  let galleryLoading = true;
 
+  // Admin state
   let showAdmin = false;
   let adminPass = '';
   let adminLoggedIn = false;
+  let adminError = '';
+  let adminImages = []; // ALL images (published + unpublished), for admin management
   let newCaption = '';
   let newUrl = '';
+  let newKind = 'gallery'; // 'gallery' | 'offer'
+  let uploading = false;
+
   let mobileMenuOpen = false;
   let activeSection = 'home';
-  let lightboxImg = null;
 
-  const ADMIN_PASSWORD = 'pvr2025';
   const WHATSAPP_NUMBER = '919036099917';
 
-  function adminLogin() {
-    if (adminPass === ADMIN_PASSWORD) { adminLoggedIn = true; adminPass = ''; }
-    else { alert('Wrong password'); }
+  async function loadPublicGallery() {
+    galleryLoading = true;
+    try {
+      const res = await fetch('/api/gallery');
+      galleryImages = res.ok ? await res.json() : [];
+    } catch {
+      galleryImages = [];
+    }
+    galleryLoading = false;
   }
-  function addImage() {
-    if (!newUrl.trim()) return;
-    galleryImages = [...galleryImages, { id: Date.now(), url: newUrl.trim(), caption: newCaption.trim() || 'PVR Energy Project' }];
-    newUrl = ''; newCaption = '';
+
+  async function refreshAdminImages() {
+    const res = await fetch('/api/admin/images', {
+      headers: { 'x-admin-password': adminPass }
+    });
+    if (res.ok) adminImages = await res.json();
   }
-  function removeImage(id) { galleryImages = galleryImages.filter(i => i.id !== id); }
-  function handleFileUpload(e) {
-    const files = e.target.files;
-    if (!files) return;
-    for (const file of files) {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        galleryImages = [...galleryImages, { id: Date.now() + Math.random(), url: ev.target.result, caption: file.name.replace(/\.[^.]+$/, '') }];
-      };
-      reader.readAsDataURL(file);
+
+  async function adminLogin() {
+    adminError = '';
+    const res = await fetch('/api/admin/images', {
+      headers: { 'x-admin-password': adminPass }
+    });
+    if (res.ok) {
+      adminLoggedIn = true;
+      adminImages = await res.json();
+    } else {
+      adminError = 'Wrong password';
     }
   }
+
+  async function addImageByUrl() {
+    if (!newUrl.trim()) return;
+    await fetch('/api/admin/images', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-admin-password': adminPass },
+      body: JSON.stringify({
+        url: newUrl.trim(),
+        caption: newCaption.trim() || 'PVR Energy Project',
+        kind: newKind
+      })
+    });
+    newUrl = '';
+    newCaption = '';
+    newKind = 'gallery';
+    await refreshAdminImages();
+    await loadPublicGallery();
+  }
+
+  async function handleFileUpload(e) {
+    const files = e.target.files;
+    if (!files || !files.length) return;
+    uploading = true;
+    for (const file of files) {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('caption', newCaption.trim() || file.name.replace(/\.[^.]+$/, ''));
+      fd.append('kind', newKind);
+      await fetch('/api/admin/images', {
+        method: 'POST',
+        headers: { 'x-admin-password': adminPass },
+        body: fd
+      });
+    }
+    uploading = false;
+    newCaption = '';
+    newKind = 'gallery';
+    e.target.value = '';
+    await refreshAdminImages();
+    await loadPublicGallery();
+  }
+
+  async function togglePublish(img) {
+    await fetch('/api/admin/images', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', 'x-admin-password': adminPass },
+      body: JSON.stringify({ id: img.id, published: !img.published })
+    });
+    await refreshAdminImages();
+    await loadPublicGallery();
+  }
+
+  async function toggleOffer(img) {
+    const kind = img.kind === 'offer' ? 'gallery' : 'offer';
+    await fetch('/api/admin/images', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', 'x-admin-password': adminPass },
+      body: JSON.stringify({ id: img.id, kind })
+    });
+    await refreshAdminImages();
+    await loadPublicGallery();
+  }
+
+  async function removeImage(id) {
+    await fetch(`/api/admin/images?id=${id}`, {
+      method: 'DELETE',
+      headers: { 'x-admin-password': adminPass }
+    });
+    await refreshAdminImages();
+    await loadPublicGallery();
+  }
+
   function whatsapp(msg = '') {
     const text = encodeURIComponent(msg || 'Hello PVR Energy Solutions! I am interested in solar installation for my property in Bangalore.');
     window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${text}`, '_blank');
@@ -53,6 +134,7 @@
   }
 
   onMount(() => {
+    loadPublicGallery();
     const observer = new IntersectionObserver((entries) => {
       for (const e of entries) { if (e.isIntersecting) activeSection = e.target.id; }
     }, { threshold: 0.3 });
@@ -164,34 +246,49 @@
     <div class="admin-panel" on:click|stopPropagation>
       <div class="admin-hdr">
         <h3>🔧 Admin — Photo Gallery</h3>
-        <button on:click={() => { showAdmin = false; adminLoggedIn = false; }}>✕</button>
+        <button on:click={() => { showAdmin = false; adminLoggedIn = false; adminPass = ''; }}>✕</button>
       </div>
       {#if !adminLoggedIn}
         <div class="admin-login">
           <p>Enter admin password to manage gallery photos</p>
           <input type="password" bind:value={adminPass} placeholder="Password" on:keydown={(e) => e.key === 'Enter' && adminLogin()}/>
           <button on:click={adminLogin}>Login</button>
+          {#if adminError}<p class="admin-error">{adminError}</p>{/if}
         </div>
       {:else}
         <div class="admin-body">
-          <div class="admin-upload-section">
-            <h4>Upload Photos from Device</h4>
-            <label class="upload-btn">📁 Choose Photos<input type="file" accept="image/*" multiple on:change={handleFileUpload} style="display:none"/></label>
+          <div class="admin-new-section">
+            <h4>Add a New Photo</h4>
+            <div class="admin-new-row">
+              <input bind:value={newCaption} placeholder="Caption (e.g. Solar project in Anekal)"/>
+              <select bind:value={newKind}>
+                <option value="gallery">Regular Work Photo</option>
+                <option value="offer">🔥 Sale Offer</option>
+              </select>
+            </div>
+            <label class="upload-btn">
+              {uploading ? 'Uploading…' : '📁 Choose Photos from Device'}
+              <input type="file" accept="image/*" multiple on:change={handleFileUpload} disabled={uploading} style="display:none"/>
+            </label>
+            <div class="admin-url-row">
+              <input bind:value={newUrl} placeholder="...or paste an image URL"/>
+              <button on:click={addImageByUrl}>Add</button>
+            </div>
           </div>
-          <div class="admin-url-section">
-            <h4>Add Photo by URL</h4>
-            <input bind:value={newUrl} placeholder="https://... image URL"/>
-            <input bind:value={newCaption} placeholder="Caption (e.g. Solar project in Anekal)"/>
-            <button on:click={addImage}>Add Photo</button>
-          </div>
+
           <div class="admin-grid">
-            <h4>Current Gallery ({galleryImages.length} photos)</h4>
+            <h4>Current Photos ({adminImages.length})</h4>
             <div class="admin-imgs">
-              {#each galleryImages as img (img.id)}
-                <div class="admin-img-card">
+              {#each adminImages as img (img.id)}
+                <div class="admin-img-card" class:is-unpublished={!img.published}>
+                  {#if img.kind === 'offer'}<span class="admin-offer-tag">SALE OFFER</span>{/if}
                   <img src={img.url} alt={img.caption}/>
                   <p>{img.caption}</p>
-                  <button on:click={() => removeImage(img.id)}>🗑 Remove</button>
+                  <div class="admin-img-actions">
+                    <button class="aia-btn" on:click={() => togglePublish(img)}>{img.published ? '👁 Published' : '🚫 Hidden'}</button>
+                    <button class="aia-btn" on:click={() => toggleOffer(img)}>{img.kind === 'offer' ? 'Unmark Offer' : 'Mark as Offer'}</button>
+                    <button class="aia-btn aia-remove" on:click={() => removeImage(img.id)}>🗑 Remove</button>
+                  </div>
                 </div>
               {/each}
             </div>
@@ -336,27 +433,13 @@
       <h2>Project Gallery</h2>
       <p>Real installations across Bangalore — homes, shops, factories and more</p>
     </div>
-    <div class="gallery-grid">
-      {#each galleryImages as img (img.id)}
-        <div class="gallery-card" on:click={() => lightboxImg = img}>
-          <img src={img.url} alt={img.caption} loading="lazy"/>
-          <div class="gallery-overlay"><p>{img.caption}</p><span>🔍 View</span></div>
-        </div>
-      {/each}
-    </div>
-    {#if galleryImages.length === 0}
-      <div class="gallery-empty">No photos yet. Admin can add photos using the ⚙ button.</div>
+    {#if galleryLoading}
+      <div class="gallery-empty">Loading photos…</div>
+    {:else}
+      <Carousel items={galleryImages} />
     {/if}
   </div>
 </section>
-
-{#if lightboxImg}
-  <div class="lightbox" on:click={() => lightboxImg = null}>
-    <button class="lightbox-close" on:click={() => lightboxImg = null}>✕</button>
-    <img src={lightboxImg.url} alt={lightboxImg.caption}/>
-    <p>{lightboxImg.caption}</p>
-  </div>
-{/if}
 
 <!-- TESTIMONIALS -->
 <section id="testimonials" class="testimonials section">
@@ -566,17 +649,25 @@
   .admin-login p{color:var(--text-light);font-size:14px;}
   .admin-login input{border:1.5px solid var(--border);border-radius:8px;padding:10px 14px;font-size:14px;outline:none;}
   .admin-login button{background:var(--orange);color:#fff;border:none;border-radius:8px;padding:10px;font-weight:700;}
+  .admin-error{color:#dc2626;font-size:13px;}
   .admin-body{padding:22px;display:flex;flex-direction:column;gap:20px;}
   .admin-body h4{font-size:13px;font-weight:700;color:var(--navy);margin-bottom:8px;}
-  .admin-upload-section,.admin-url-section{display:flex;flex-direction:column;gap:8px;}
+  .admin-new-section{display:flex;flex-direction:column;gap:10px;}
+  .admin-new-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .admin-new-row input,.admin-new-row select{border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-size:13px;outline:none;}
   .upload-btn{display:inline-flex;align-items:center;gap:6px;background:var(--orange);color:#fff;border:none;border-radius:8px;padding:10px 18px;font-weight:600;font-size:13px;cursor:pointer;width:fit-content;}
-  .admin-url-section input{border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-size:13px;outline:none;}
-  .admin-url-section button{background:var(--green);color:#fff;border:none;border-radius:8px;padding:9px 18px;font-weight:700;font-size:13px;width:fit-content;}
-  .admin-imgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-top:8px;}
-  .admin-img-card{border:1px solid var(--border);border-radius:8px;overflow:hidden;display:flex;flex-direction:column;}
+  .admin-url-row{display:flex;gap:8px;}
+  .admin-url-row input{flex:1;border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-size:13px;outline:none;}
+  .admin-url-row button{background:var(--green);color:#fff;border:none;border-radius:8px;padding:9px 18px;font-weight:700;font-size:13px;}
+  .admin-imgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-top:8px;}
+  .admin-img-card{border:1px solid var(--border);border-radius:8px;overflow:hidden;display:flex;flex-direction:column;position:relative;}
+  .admin-img-card.is-unpublished{opacity:.5;}
+  .admin-offer-tag{position:absolute;top:6px;left:6px;z-index:1;background:#ef4444;color:#fff;font-size:9px;font-weight:800;padding:2px 7px;border-radius:999px;}
   .admin-img-card img{width:100%;height:100px;object-fit:cover;}
-  .admin-img-card p{font-size:10px;padding:5px 8px;color:var(--text-light);flex:1;}
-  .admin-img-card button{background:#fef2f2;color:#dc2626;border:none;padding:5px;font-size:11px;font-weight:600;cursor:pointer;}
+  .admin-img-card p{font-size:10px;padding:5px 8px;color:var(--text-light);}
+  .admin-img-actions{display:flex;flex-direction:column;gap:2px;padding:0 6px 6px;}
+  .aia-btn{background:#f3f4f6;color:var(--text);border:none;padding:5px;font-size:10px;font-weight:600;cursor:pointer;border-radius:4px;}
+  .aia-remove{background:#fef2f2;color:#dc2626;}
 
   /* ══ HERO ═══════════════════════════════════════════════ */
   .hero{
@@ -707,21 +798,7 @@
   @media(max-width:500px){.workflow-grid{grid-template-columns:1fr;}}
 
   /* GALLERY */
-  .gallery-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
-  .gallery-card{border-radius:14px;overflow:hidden;cursor:pointer;position:relative;aspect-ratio:4/3;}
-  .gallery-card img{width:100%;height:100%;object-fit:cover;transition:transform 0.3s;}
-  .gallery-card:hover img{transform:scale(1.07);}
-  .gallery-overlay{position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.8) 0%,transparent 60%);opacity:0;transition:opacity 0.3s;display:flex;flex-direction:column;justify-content:flex-end;padding:16px;}
-  .gallery-card:hover .gallery-overlay{opacity:1;}
-  .gallery-overlay p{color:#fff;font-size:13px;font-weight:600;}
-  .gallery-overlay span{color:#fbbf24;font-size:12px;}
   .gallery-empty{text-align:center;color:var(--text-light);padding:40px;background:#f9fafb;border-radius:12px;border:2px dashed var(--border);}
-  @media(max-width:700px){.gallery-grid{grid-template-columns:1fr 1fr;}}
-  @media(max-width:480px){.gallery-grid{grid-template-columns:1fr;}}
-  .lightbox{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:600;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;cursor:pointer;}
-  .lightbox img{max-width:90vw;max-height:80vh;object-fit:contain;border-radius:12px;}
-  .lightbox p{color:#fff;margin-top:14px;font-size:14px;}
-  .lightbox-close{position:absolute;top:20px;right:24px;background:none;border:none;color:#fff;font-size:28px;cursor:pointer;}
 
   /* TESTIMONIALS */
   .testi-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:24px;}
