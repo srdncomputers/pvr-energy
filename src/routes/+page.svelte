@@ -1,5 +1,6 @@
 <script>
   import { onMount } from 'svelte';
+  import { fade } from 'svelte/transition';
   import Carousel from '$lib/Carousel.svelte';
 
   // Public gallery (fetched from /api/gallery — published items only)
@@ -133,8 +134,54 @@
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
+  // ── Hero slide carousel ──────────────────────────────────
+  let heroActive = 0;
+  let heroTimer;
+  const heroSlides = [
+    {
+      image: 'https://images.unsplash.com/photo-1509391366360-2e959784a276?w=1600&q=70',
+      tag: '🏠 Residential Solar',
+      title: 'Power Your Home<br/>with Clean Solar Energy',
+      sub: 'Serving Electronic City · Anekal · Attibele · Jigani · Bangalore Rural',
+      bottomStat: '₹2K–8K', bottomLabel: 'Saved every month on electricity bills'
+    },
+    {
+      image: 'https://images.unsplash.com/photo-1497440001374-f26997328c1b?w=1600&q=70',
+      tag: '🏭 Commercial & Industrial',
+      title: 'Energy Independence<br/>for Your Business',
+      sub: 'Large-scale rooftop installations for factories, warehouses & IT parks',
+      bottomStat: '50+', bottomLabel: 'Commercial & industrial projects completed'
+    },
+    {
+      image: 'https://images.unsplash.com/photo-1466611653911-95081537e5b7?w=1600&q=70',
+      tag: '✅ BESCOM Approved',
+      title: 'Hassle-Free Approvals<br/>& Govt. Subsidy Assistance',
+      sub: 'We handle net metering, documentation and subsidy claims end-to-end',
+      bottomStat: '100%', bottomLabel: 'Paperwork & approvals fully handled for you'
+    },
+    {
+      image: 'https://images.unsplash.com/photo-1508514177221-188b1cf16e9d?w=1600&q=70',
+      tag: '⭐ Trusted Since 2022',
+      title: "Bangalore's Trusted<br/>Solar Energy Partner",
+      sub: 'Certified technicians, premium panels, 25-year warranty',
+      bottomStat: '3+', bottomLabel: 'Years serving South Bangalore'
+    }
+  ];
+  function goHero(i) {
+    heroActive = (i + heroSlides.length) % heroSlides.length;
+    startHeroTimer();
+  }
+  function startHeroTimer() {
+    stopHeroTimer();
+    heroTimer = setInterval(() => { heroActive = (heroActive + 1) % heroSlides.length; }, 6000);
+  }
+  function stopHeroTimer() {
+    if (heroTimer) clearInterval(heroTimer);
+  }
+
   onMount(() => {
     loadPublicGallery();
+    startHeroTimer();
     const observer = new IntersectionObserver((entries) => {
       for (const e of entries) { if (e.isIntersecting) activeSection = e.target.id; }
     }, { threshold: 0.3 });
@@ -142,7 +189,7 @@
       const el = document.getElementById(id);
       if (el) observer.observe(el);
     });
-    return () => observer.disconnect();
+    return () => { observer.disconnect(); stopHeroTimer(); };
   });
 
   const services = [
@@ -300,16 +347,25 @@
 {/if}
 
 <!-- ══ HERO ══════════════════════════════════════════════ -->
-<section id="home" class="hero">
-  <div class="hero-bg"></div>
+<section id="home" class="hero" on:mouseenter={stopHeroTimer} on:mouseleave={startHeroTimer}>
+  <div class="hero-slides">
+    {#each heroSlides as slide, i}
+      <div class="hero-slide" class:active={i === heroActive} style="background-image:url('{slide.image}')"></div>
+    {/each}
+  </div>
+  <div class="hero-slide-overlay"></div>
 
   <div class="hero-row">
 
     <!-- LEFT: English -->
     <div class="hero-content">
-      <div class="hero-badge">🌞 Bangalore's Trusted Solar Partner</div>
-      <h1>Power Your Home<br/>with Clean Solar Energy</h1>
-      <p>Serving Electronic City · Anekal · Attibele · Jigani · Bangalore Rural</p>
+      {#key heroActive}
+        <div in:fade={{ duration: 450 }}>
+          <div class="hero-badge">{heroSlides[heroActive].tag}</div>
+          <h1>{@html heroSlides[heroActive].title}</h1>
+          <p>{heroSlides[heroActive].sub}</p>
+        </div>
+      {/key}
       <div class="hero-actions">
         <button class="hero-btn primary" on:click={() => whatsapp('Hi! I want a FREE solar site visit for my property.')}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
@@ -345,6 +401,28 @@
       </div>
     </div>
 
+  </div>
+
+  <!-- Bottom caption (per-slide) + dot navigation -->
+  <div class="hero-bottom-bar">
+    {#key heroActive}
+      <div class="hero-caption" in:fade={{ duration: 450, delay: 100 }}>
+        <span class="hc-num">{heroSlides[heroActive].bottomStat}</span>
+        <span class="hc-label">{heroSlides[heroActive].bottomLabel}</span>
+      </div>
+    {/key}
+    <div class="hero-dots" role="tablist" aria-label="Hero slides">
+      {#each heroSlides as _, i}
+        <button
+          class="hero-dot"
+          class:active={i === heroActive}
+          role="tab"
+          aria-selected={i === heroActive}
+          aria-label={`Go to slide ${i + 1}`}
+          on:click={() => goHero(i)}
+        ></button>
+      {/each}
+    </div>
   </div>
 
   <div class="hero-stats">
@@ -673,14 +751,19 @@
   .hero{
     min-height:calc(100vh - 107px);
     background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 50%,#164e35 100%);
-    position:relative;display:flex;flex-direction:column;
+    position:relative;overflow:hidden;display:flex;flex-direction:column;
     justify-content:center;padding:80px 20px 40px;color:#fff;
   }
-  .hero-bg{position:absolute;inset:0;background:url('https://images.unsplash.com/photo-1509391366360-2e959784a276?w=1400&q=60') center/cover no-repeat;opacity:.18;}
+
+  /* Background slide carousel */
+  .hero-slides{position:absolute;inset:0;z-index:0;}
+  .hero-slide{position:absolute;inset:0;background-size:cover;background-position:center;opacity:0;transition:opacity 1.4s ease;}
+  .hero-slide.active{opacity:.28;}
+  .hero-slide-overlay{position:absolute;inset:0;z-index:0;background:linear-gradient(135deg,rgba(15,23,42,.65) 0%,rgba(30,58,95,.55) 50%,rgba(22,78,53,.6) 100%);}
 
   /* Two-column row */
   .hero-row{
-    position:relative;max-width:1200px;margin:0 auto;width:100%;
+    position:relative;z-index:1;max-width:1200px;margin:0 auto;width:100%;
     display:grid;grid-template-columns:1fr 420px;gap:48px;align-items:center;
   }
 
@@ -688,7 +771,7 @@
   .hero-content{}
   .hero-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(249,115,22,.2);border:1px solid rgba(249,115,22,.4);color:#fed7aa;font-size:13px;font-weight:600;padding:6px 14px;border-radius:999px;margin-bottom:20px;}
   .hero-content h1{font-size:clamp(32px,5vw,58px);font-weight:900;line-height:1.1;margin-bottom:16px;text-shadow:0 2px 20px rgba(0,0,0,.3);}
-  .hero-content > p{font-size:16px;color:#cbd5e1;margin-bottom:32px;}
+  .hero-content p{font-size:16px;color:#cbd5e1;margin-bottom:32px;}
   .hero-actions{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:32px;}
   .hero-btn{display:flex;align-items:center;gap:8px;border:none;border-radius:12px;padding:14px 26px;font-size:15px;font-weight:700;transition:all 0.2s;}
   .hero-btn.primary{background:var(--wa-green);color:#fff;box-shadow:0 4px 20px rgba(37,211,102,.4);}
@@ -699,7 +782,7 @@
   .hero-tags span{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#e2e8f0;font-size:12px;font-weight:500;padding:4px 12px;border-radius:999px;}
 
   /* Right: Kannada card */
-  .hero-kannada{display:flex;align-items:center;justify-content:center;}
+  .hero-kannada{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;}
   .kn-card{
     background:linear-gradient(145deg, rgba(255,255,255,.12), rgba(255,255,255,.06));
     backdrop-filter:blur(16px);
@@ -743,8 +826,22 @@
     text-align:center;color:#94a3b8;font-size:13px;
   }
 
+  /* Bottom caption (per-slide, "info down") + radio-dot navigation */
+  .hero-bottom-bar{
+    position:relative;z-index:1;max-width:1200px;margin:40px auto 0;width:100%;
+    display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:18px;
+    padding-top:26px;border-top:1px solid rgba(255,255,255,.15);
+  }
+  .hero-caption{display:flex;align-items:baseline;gap:10px;min-height:32px;}
+  .hc-num{font-size:26px;font-weight:900;color:var(--orange);}
+  .hc-label{font-size:13px;color:#cbd5e1;font-weight:500;}
+  .hero-dots{display:flex;gap:9px;align-items:center;}
+  .hero-dot{width:9px;height:9px;border-radius:999px;background:rgba(255,255,255,.35);border:none;padding:0;cursor:pointer;transition:all .3s ease;}
+  .hero-dot:hover{background:rgba(255,255,255,.65);}
+  .hero-dot.active{width:30px;background:var(--orange);box-shadow:0 0 10px rgba(249,115,22,.6);}
+
   /* Stats row */
-  .hero-stats{position:relative;max-width:1200px;margin:40px auto 0;width:100%;display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:rgba(255,255,255,.1);border-radius:16px;overflow:hidden;}
+  .hero-stats{position:relative;z-index:1;max-width:1200px;margin:32px auto 0;width:100%;display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:rgba(255,255,255,.1);border-radius:16px;overflow:hidden;}
   .hero-stat{background:rgba(0,0,0,.2);backdrop-filter:blur(10px);padding:24px;text-align:center;}
   .hs-num{font-size:36px;font-weight:900;color:var(--orange);}
   .hs-label{font-size:13px;color:#94a3b8;font-weight:500;}
@@ -753,7 +850,10 @@
     .hero-row{grid-template-columns:1fr;gap:32px;}
     .hero-kannada{max-width:480px;width:100%;}
   }
-  @media(max-width:700px){.hero-stats{grid-template-columns:1fr 1fr;}}
+  @media(max-width:700px){
+    .hero-stats{grid-template-columns:1fr 1fr;}
+    .hero-bottom-bar{justify-content:center;text-align:center;}
+  }
 
   /* ABOUT */
   .about-grid{display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:center;}
