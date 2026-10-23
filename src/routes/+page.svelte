@@ -2,29 +2,25 @@
   import { onMount } from 'svelte';
   import { fade } from 'svelte/transition';
   import Carousel from '$lib/Carousel.svelte';
+  import AdminPanel from '$lib/AdminPanel.svelte';
+  import WaIcon from '$lib/WaIcon.svelte';
+
+  // All editable text/pictures come from the server (saved by the admin, merged over defaults)
+  export let data;
+  let content = data.content;
+  $: b = content.business;
+  $: slides = content.hero.slides;
+  $: waNumber = (b.whatsapp || '').replace(/\D/g, '');
 
   // Public gallery (fetched from /api/gallery — published items only)
   let galleryImages = [];
   let galleryLoading = true;
 
-  // Admin state
   let showAdmin = false;
-  let adminPass = '';
-  let adminLoggedIn = false;
-  let adminError = '';
-  let adminImages = []; // ALL images (published + unpublished), for admin management
-  let newCaption = '';
-  let newUrl = '';
-  let newKind = 'gallery'; // 'gallery' | 'offer'
-  let uploading = false;
-
   let mobileMenuOpen = false;
   let activeSection = 'home';
 
-  const WHATSAPP_NUMBER = '919036099917';
-
   async function loadPublicGallery() {
-    galleryLoading = true;
     try {
       const res = await fetch('/api/gallery');
       galleryImages = res.ok ? await res.json() : [];
@@ -34,146 +30,26 @@
     galleryLoading = false;
   }
 
-  async function refreshAdminImages() {
-    const res = await fetch('/api/admin/images', {
-      headers: { 'x-admin-password': adminPass }
-    });
-    if (res.ok) adminImages = await res.json();
-  }
-
-  async function adminLogin() {
-    adminError = '';
-    const res = await fetch('/api/admin/images', {
-      headers: { 'x-admin-password': adminPass }
-    });
-    if (res.ok) {
-      adminLoggedIn = true;
-      adminImages = await res.json();
-    } else {
-      adminError = 'Wrong password';
-    }
-  }
-
-  async function addImageByUrl() {
-    if (!newUrl.trim()) return;
-    await fetch('/api/admin/images', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-admin-password': adminPass },
-      body: JSON.stringify({
-        url: newUrl.trim(),
-        caption: newCaption.trim() || 'PVR Energy Project',
-        kind: newKind
-      })
-    });
-    newUrl = '';
-    newCaption = '';
-    newKind = 'gallery';
-    await refreshAdminImages();
-    await loadPublicGallery();
-  }
-
-  async function handleFileUpload(e) {
-    const files = e.target.files;
-    if (!files || !files.length) return;
-    uploading = true;
-    for (const file of files) {
-      const fd = new FormData();
-      fd.append('file', file);
-      fd.append('caption', newCaption.trim() || file.name.replace(/\.[^.]+$/, ''));
-      fd.append('kind', newKind);
-      await fetch('/api/admin/images', {
-        method: 'POST',
-        headers: { 'x-admin-password': adminPass },
-        body: fd
-      });
-    }
-    uploading = false;
-    newCaption = '';
-    newKind = 'gallery';
-    e.target.value = '';
-    await refreshAdminImages();
-    await loadPublicGallery();
-  }
-
-  async function togglePublish(img) {
-    await fetch('/api/admin/images', {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json', 'x-admin-password': adminPass },
-      body: JSON.stringify({ id: img.id, published: !img.published })
-    });
-    await refreshAdminImages();
-    await loadPublicGallery();
-  }
-
-  async function toggleOffer(img) {
-    const kind = img.kind === 'offer' ? 'gallery' : 'offer';
-    await fetch('/api/admin/images', {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json', 'x-admin-password': adminPass },
-      body: JSON.stringify({ id: img.id, kind })
-    });
-    await refreshAdminImages();
-    await loadPublicGallery();
-  }
-
-  async function removeImage(id) {
-    await fetch(`/api/admin/images?id=${id}`, {
-      method: 'DELETE',
-      headers: { 'x-admin-password': adminPass }
-    });
-    await refreshAdminImages();
-    await loadPublicGallery();
-  }
-
   function whatsapp(msg = '') {
-    const text = encodeURIComponent(msg || 'Hello PVR Energy Solutions! I am interested in solar installation for my property in Bangalore.');
-    window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${text}`, '_blank');
+    const text = encodeURIComponent(msg || `Hello ${b.name} ${b.tagline}! I am interested in solar installation for my property in Bangalore.`);
+    window.open(`https://wa.me/${waNumber}?text=${text}`, '_blank');
   }
   function scrollTo(id) {
     mobileMenuOpen = false;
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  // ── Hero slide carousel ──────────────────────────────────
+  // ── Hero slide carousel ──
   let heroActive = 0;
   let heroTimer;
-  const heroSlides = [
-    {
-      image: 'https://images.unsplash.com/photo-1509391366360-2e959784a276?w=1600&q=70',
-      tag: '🏠 Residential Solar',
-      title: 'Power Your Home<br/>with Clean Solar Energy',
-      sub: 'Serving Electronic City · Anekal · Attibele · Jigani · Bangalore Rural',
-      bottomStat: '₹2K–8K', bottomLabel: 'Saved every month on electricity bills'
-    },
-    {
-      image: 'https://images.unsplash.com/photo-1497440001374-f26997328c1b?w=1600&q=70',
-      tag: '🏭 Commercial & Industrial',
-      title: 'Energy Independence<br/>for Your Business',
-      sub: 'Large-scale rooftop installations for factories, warehouses & IT parks',
-      bottomStat: '50+', bottomLabel: 'Commercial & industrial projects completed'
-    },
-    {
-      image: 'https://images.unsplash.com/photo-1466611653911-95081537e5b7?w=1600&q=70',
-      tag: '✅ BESCOM Approved',
-      title: 'Hassle-Free Approvals<br/>& Govt. Subsidy Assistance',
-      sub: 'We handle net metering, documentation and subsidy claims end-to-end',
-      bottomStat: '100%', bottomLabel: 'Paperwork & approvals fully handled for you'
-    },
-    {
-      image: 'https://images.unsplash.com/photo-1508514177221-188b1cf16e9d?w=1600&q=70',
-      tag: '⭐ Trusted Since 2022',
-      title: "Bangalore's Trusted<br/>Solar Energy Partner",
-      sub: 'Certified technicians, premium panels, 25-year warranty',
-      bottomStat: '3+', bottomLabel: 'Years serving South Bangalore'
-    }
-  ];
+  $: if (heroActive >= slides.length) heroActive = 0;
   function goHero(i) {
-    heroActive = (i + heroSlides.length) % heroSlides.length;
+    heroActive = (i + slides.length) % slides.length;
     startHeroTimer();
   }
   function startHeroTimer() {
     stopHeroTimer();
-    heroTimer = setInterval(() => { heroActive = (heroActive + 1) % heroSlides.length; }, 6000);
+    heroTimer = setInterval(() => { heroActive = (heroActive + 1) % slides.length; }, 6000);
   }
   function stopHeroTimer() {
     if (heroTimer) clearInterval(heroTimer);
@@ -192,44 +68,19 @@
     return () => { observer.disconnect(); stopHeroTimer(); };
   });
 
-  const services = [
-    { icon:'☀️', title:'Rooftop Solar Installation', desc:'Efficient solar systems for homes and businesses across Bangalore. We handle everything from Anekal to Electronic City — site survey, design, installation and commissioning.', badge:'Most Popular' },
-    { icon:'🏠', title:'Residential Solar Solutions', desc:'Help your family go solar with customised residential systems. Save ₹2,000–₹8,000 on monthly electricity bills. Ideal for homes in Attibele, Jigani & surrounding areas.', badge:'' },
-    { icon:'🏭', title:'Commercial Solar Systems', desc:"Large-scale solar installations for factories, warehouses, IT parks and offices. Achieve energy independence and reduce operational costs significantly.", badge:'' },
-    { icon:'🚿', title:'Solar Water Heaters', desc:'Eco-friendly solar water heating for homes and apartments. Consistent hot water supply throughout the year at minimal running cost.', badge:'' },
-    { icon:'💧', title:'Water Softeners & Purifiers', desc:"Advanced water treatment systems that tackle Bangalore's hard water problem. Protect your appliances, pipes and health with our certified systems.", badge:'Bangalore Special' },
-    { icon:'🔋', title:'UPS & Power Backup', desc:'Reliable UPS and power backup solutions to keep your home or office running during frequent power cuts in Bangalore outskirts.', badge:'' },
-  ];
-  const workflow = [
-    { num:'01', title:'Free Site Visit', desc:'Our expert visits your property in Bangalore, inspects the rooftop, measures shadow-free area, and analyses your electricity bill to size the right system.' },
-    { num:'02', title:'Custom Design & Quote', desc:'We prepare a detailed proposal with system capacity, panel layout, expected generation, ROI and estimated payback period — all transparent and jargon-free.' },
-    { num:'03', title:'Professional Installation', desc:'Certified technicians install premium panels and equipment. We handle BESCOM/BMRDA approvals, net metering and all documentation.' },
-    { num:'04', title:'Handover & Support', desc:'System testing, commissioning, and a comprehensive handover. Ongoing maintenance, remote monitoring and dedicated WhatsApp support.' },
-  ];
-  const testimonials = [
-    { name:'Manjunath R.', location:'Anekal, Bangalore', text:'Got a water de-scaler installed for our home. The water quality has improved remarkably and maintenance has reduced. Highly recommended!', stars:5 },
-    { name:'Sandeep Shetty', location:'Electronic City Phase 2', text:'PVR Energy helped with solar installation for our shop. They explained everything clearly, completed on time, and delivered exactly as promised.', stars:5 },
-    { name:'Ravi Kumar S.', location:'Electronic City, Bangalore', text:'Installed a 5kW solar rooftop for our office. Professional team, smooth process — already seeing a 60% drop in electricity bills. Excellent!', stars:5 },
-    { name:'Priya N.', location:'Attibele, Bangalore', text:'Very happy with their UPS solution. Power cuts were a big issue in Attibele, but now everything runs smoothly. Quick installation and great support.', stars:5 },
-  ];
-  const stats = [
-    { num:'50+', label:'Projects Completed' },
-    { num:'3+', label:'Years in Bangalore' },
-    { num:'15+', label:'Expert Technicians' },
-    { num:'100%', label:'Customer Satisfaction' },
-  ];
+  const navItems = [['home','Home'],['about','About'],['services','Services'],['gallery','Gallery'],['testimonials','Reviews'],['contact','Contact']];
 </script>
 
 <svelte:head>
-  <title>PVR Energy Solutions — Solar Installation Bangalore | Electronic City | Anekal | Attibele</title>
-  <meta name="description" content="Bangalore's trusted solar installation company. Serving Electronic City, Anekal, Attibele, Jigani. BESCOM approved. Free site visit. WhatsApp: 9036099917" />
+  <title>{b.name} {b.tagline} — Solar Installation Bangalore | Electronic City | Anekal | Attibele</title>
+  <meta name="description" content="Bangalore's trusted solar installation company. Serving Electronic City, Anekal, Attibele, Jigani. BESCOM approved. Free site visit. WhatsApp: {b.phoneDisplay}" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&family=Noto+Sans+Kannada:wght@400;600;700;800&display=swap" rel="stylesheet">
 </svelte:head>
 
 <!-- WHATSAPP FLOAT -->
 <button class="wa-float" on:click={() => whatsapp()} title="Chat on WhatsApp">
-  <svg width="28" height="28" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+  <WaIcon size={28} />
   <span>Chat with Us</span>
 </button>
 
@@ -237,20 +88,20 @@
 <div class="topbar">
   <div class="topbar-inner">
     <div class="topbar-left">
-      <a href="mailto:info@pvrenergysolutions.in" class="topbar-link">
+      <a href="mailto:{b.email}" class="topbar-link">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
-        info@pvrenergysolutions.in
+        {b.email}
       </a>
       <span class="topbar-sep">|</span>
       <span class="topbar-link">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-        Bangalore, Karnataka
+        {b.location}
       </span>
     </div>
     <div class="topbar-right">
       <button class="topbar-wa" on:click={() => whatsapp()}>
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-        +91 90360 99917
+        <WaIcon size={13} />
+        {b.phoneDisplay}
       </button>
     </div>
   </div>
@@ -262,12 +113,12 @@
     <div class="nav-logo" on:click={() => scrollTo('home')}>
       <div class="logo-icon">☀️</div>
       <div>
-        <div class="logo-name">PVR Energy</div>
-        <div class="logo-sub">Solutions</div>
+        <div class="logo-name">{b.name}</div>
+        <div class="logo-sub">{b.tagline}</div>
       </div>
     </div>
     <div class="nav-links">
-      {#each [['home','Home'],['about','About'],['services','Services'],['gallery','Gallery'],['testimonials','Reviews'],['contact','Contact']] as [id, label]}
+      {#each navItems as [id, label]}
         <button class="nav-link" class:active={activeSection === id} on:click={() => scrollTo(id)}>{label}</button>
       {/each}
     </div>
@@ -279,7 +130,7 @@
   </div>
   {#if mobileMenuOpen}
     <div class="mobile-menu">
-      {#each [['home','Home'],['about','About'],['services','Services'],['gallery','Gallery'],['testimonials','Reviews'],['contact','Contact']] as [id, label]}
+      {#each navItems as [id, label]}
         <button class="mobile-link" on:click={() => scrollTo(id)}>{label}</button>
       {/each}
       <button class="mobile-quote" on:click={() => whatsapp()}>📱 WhatsApp Us Now</button>
@@ -289,130 +140,69 @@
 
 <!-- ADMIN PANEL -->
 {#if showAdmin}
-  <div class="admin-overlay" on:click={() => showAdmin = false}>
-    <div class="admin-panel" on:click|stopPropagation>
-      <div class="admin-hdr">
-        <h3>🔧 Admin — Photo Gallery</h3>
-        <button on:click={() => { showAdmin = false; adminLoggedIn = false; adminPass = ''; }}>✕</button>
-      </div>
-      {#if !adminLoggedIn}
-        <div class="admin-login">
-          <p>Enter admin password to manage gallery photos</p>
-          <input type="password" bind:value={adminPass} placeholder="Password" on:keydown={(e) => e.key === 'Enter' && adminLogin()}/>
-          <button on:click={adminLogin}>Login</button>
-          {#if adminError}<p class="admin-error">{adminError}</p>{/if}
-        </div>
-      {:else}
-        <div class="admin-body">
-          <div class="admin-new-section">
-            <h4>Add a New Photo</h4>
-            <div class="admin-new-row">
-              <input bind:value={newCaption} placeholder="Caption (e.g. Solar project in Anekal)"/>
-              <select bind:value={newKind}>
-                <option value="gallery">Regular Work Photo</option>
-                <option value="offer">🔥 Sale Offer</option>
-              </select>
-            </div>
-            <label class="upload-btn">
-              {uploading ? 'Uploading…' : '📁 Choose Photos from Device'}
-              <input type="file" accept="image/*" multiple on:change={handleFileUpload} disabled={uploading} style="display:none"/>
-            </label>
-            <div class="admin-url-row">
-              <input bind:value={newUrl} placeholder="...or paste an image URL"/>
-              <button on:click={addImageByUrl}>Add</button>
-            </div>
-          </div>
-
-          <div class="admin-grid">
-            <h4>Current Photos ({adminImages.length})</h4>
-            <div class="admin-imgs">
-              {#each adminImages as img (img.id)}
-                <div class="admin-img-card" class:is-unpublished={!img.published}>
-                  {#if img.kind === 'offer'}<span class="admin-offer-tag">SALE OFFER</span>{/if}
-                  <img src={img.url} alt={img.caption}/>
-                  <p>{img.caption}</p>
-                  <div class="admin-img-actions">
-                    <button class="aia-btn" on:click={() => togglePublish(img)}>{img.published ? '👁 Published' : '🚫 Hidden'}</button>
-                    <button class="aia-btn" on:click={() => toggleOffer(img)}>{img.kind === 'offer' ? 'Unmark Offer' : 'Mark as Offer'}</button>
-                    <button class="aia-btn aia-remove" on:click={() => removeImage(img.id)}>🗑 Remove</button>
-                  </div>
-                </div>
-              {/each}
-            </div>
-          </div>
-        </div>
-      {/if}
-    </div>
-  </div>
+  <AdminPanel
+    on:close={() => (showAdmin = false)}
+    on:saved={(e) => (content = e.detail)}
+    on:gallery={loadPublicGallery}
+  />
 {/if}
 
-<!-- ══ HERO ══════════════════════════════════════════════ -->
+<!-- ══ HERO ══ -->
 <section id="home" class="hero" on:mouseenter={stopHeroTimer} on:mouseleave={startHeroTimer}>
   <div class="hero-slides">
-    {#each heroSlides as slide, i}
+    {#each slides as slide, i}
       <div class="hero-slide" class:active={i === heroActive} style="background-image:url('{slide.image}')"></div>
     {/each}
   </div>
   <div class="hero-slide-overlay"></div>
 
   <div class="hero-row">
-
-    <!-- LEFT: English -->
     <div class="hero-content">
       {#key heroActive}
         <div in:fade={{ duration: 450 }}>
-          <div class="hero-badge">{heroSlides[heroActive].tag}</div>
-          <h1>{@html heroSlides[heroActive].title}</h1>
-          <p>{heroSlides[heroActive].sub}</p>
+          <div class="hero-badge">{slides[heroActive].tag}</div>
+          <h1>{slides[heroActive].title}</h1>
+          <p>{slides[heroActive].sub}</p>
         </div>
       {/key}
       <div class="hero-actions">
         <button class="hero-btn primary" on:click={() => whatsapp('Hi! I want a FREE solar site visit for my property.')}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+          <WaIcon size={18} />
           Book Free Site Visit
         </button>
         <button class="hero-btn secondary" on:click={() => scrollTo('services')}>Our Services</button>
       </div>
       <div class="hero-tags">
-        <span>✅ BESCOM Approved</span>
-        <span>✅ Subsidy Assistance</span>
-        <span>✅ 25 Year Panel Warranty</span>
-        <span>✅ Free Consultation</span>
+        {#each content.hero.tags as tag}<span>✅ {tag}</span>{/each}
       </div>
     </div>
 
-    <!-- RIGHT: Kannada card -->
     <div class="hero-kannada">
       <div class="kn-card">
         <div class="kn-sun">☀️</div>
-        <h2 class="kn-title">ನಿಮ್ಮ ಮನೆಗೆ<br/>ಸೌರ ಶಕ್ತಿ ತನ್ನಿ</h2>
-        <p class="kn-sub">ಸ್ವಚ್ಛ ಮತ್ತು ಉಳಿತಾಯದ ವಿದ್ಯುತ್</p>
+        <h2 class="kn-title">{content.hero.kannada.title}</h2>
+        <p class="kn-sub">{content.hero.kannada.sub}</p>
         <div class="kn-divider"></div>
         <ul class="kn-points">
-          <li><span class="kn-dot"></span>ಉಚಿತ ಸೈಟ್ ಭೇಟಿ ಮತ್ತು ಅಂದಾಜು</li>
-          <li><span class="kn-dot"></span>BESCOM ಅನುಮೋದಿತ ಸ್ಥಾಪನೆ</li>
-          <li><span class="kn-dot"></span>ಸರ್ಕಾರಿ ಸಬ್ಸಿಡಿ ಸಹಾಯ</li>
-          <li><span class="kn-dot"></span>ಎಲೆಕ್ಟ್ರಾನಿಕ್ ಸಿಟಿ · ಆನೇಕಲ್ · ಅತ್ತಿಬೆಲೆ</li>
+          {#each content.hero.kannada.points as pt}<li><span class="kn-dot"></span>{pt}</li>{/each}
         </ul>
         <button class="kn-btn" on:click={() => whatsapp('ನಮಸ್ಕಾರ! ನಾನು ಸೌರ ಶಕ್ತಿ ಅಳವಡಿಕೆ ಬಗ್ಗೆ ಮಾಹಿತಿ ಬೇಕು.')}>
-          ಇಂದೇ ಸಂಪರ್ಕಿಸಿ →
+          {content.hero.kannada.button}
         </button>
-        <p class="kn-number">📱 90360 99917</p>
+        <p class="kn-number">📱 {b.phoneDisplay}</p>
       </div>
     </div>
-
   </div>
 
-  <!-- Bottom caption (per-slide) + dot navigation -->
   <div class="hero-bottom-bar">
     {#key heroActive}
       <div class="hero-caption" in:fade={{ duration: 450, delay: 100 }}>
-        <span class="hc-num">{heroSlides[heroActive].bottomStat}</span>
-        <span class="hc-label">{heroSlides[heroActive].bottomLabel}</span>
+        <span class="hc-num">{slides[heroActive].bottomStat}</span>
+        <span class="hc-label">{slides[heroActive].bottomLabel}</span>
       </div>
     {/key}
     <div class="hero-dots" role="tablist" aria-label="Hero slides">
-      {#each heroSlides as _, i}
+      {#each slides as _, i}
         <button
           class="hero-dot"
           class:active={i === heroActive}
@@ -426,7 +216,7 @@
   </div>
 
   <div class="hero-stats">
-    {#each stats as s}
+    {#each content.stats as s}
       <div class="hero-stat">
         <div class="hs-num">{s.num}</div>
         <div class="hs-label">{s.label}</div>
@@ -440,22 +230,19 @@
   <div class="container">
     <div class="about-grid">
       <div class="about-img-wrap">
-        <img src="https://images.unsplash.com/photo-1497435334941-8c899ee9e8e9?w=700&q=80" alt="PVR Energy Solutions team Bangalore" class="about-img"/>
-        <div class="about-img-badge"><div class="aib-num">3+</div><div class="aib-label">Years Serving<br/>Bangalore</div></div>
+        <img src={content.about.image} alt="{b.name} {b.tagline} team" class="about-img"/>
+        <div class="about-img-badge"><div class="aib-num">{content.about.badgeNum}</div><div class="aib-label">{content.about.badgeLabel}</div></div>
       </div>
       <div class="about-content">
         <div class="section-tag">🏙️ About Us</div>
-        <h2>Bangalore's Local<br/>Solar Energy Experts</h2>
-        <p>PVR Energy Solutions is a Bangalore-based company committed to helping homes, businesses, and industries in South Bangalore transition to clean, reliable and cost-efficient solar energy.</p>
-        <p>We specialise in solar rooftop installations across <strong>Electronic City, Anekal, Attibele, Jigani, Hosa Road</strong> and the Bangalore Rural district.</p>
-        <p>Our team handles everything: BESCOM net-metering approvals, Karnataka government subsidy applications, structural survey, premium panel sourcing and post-installation AMC support.</p>
+        <h2>{content.about.title}</h2>
+        {#each content.about.paragraphs as para}<p>{para}</p>{/each}
         <div class="about-highlights">
-          <div class="ah-item"><span class="ah-icon">🏆</span><div><strong>BESCOM Empanelled</strong><br/><small>Approved vendor for net metering</small></div></div>
-          <div class="ah-item"><span class="ah-icon">💰</span><div><strong>Subsidy Assistance</strong><br/><small>PM Surya Ghar &amp; State schemes</small></div></div>
-          <div class="ah-item"><span class="ah-icon">🔧</span><div><strong>End-to-End Service</strong><br/><small>Survey → Install → AMC</small></div></div>
-          <div class="ah-item"><span class="ah-icon">📍</span><div><strong>Local Team</strong><br/><small>Based in South Bangalore</small></div></div>
+          {#each content.about.highlights as h}
+            <div class="ah-item"><span class="ah-icon">{h.icon}</span><div><strong>{h.title}</strong><br/><small>{h.sub}</small></div></div>
+          {/each}
         </div>
-        <button class="btn-primary" on:click={() => whatsapp('Hi! I want to know more about PVR Energy Solutions.')}>Talk to Our Team →</button>
+        <button class="btn-primary" on:click={() => whatsapp(`Hi! I want to know more about ${b.name} ${b.tagline}.`)}>Talk to Our Team →</button>
       </div>
     </div>
   </div>
@@ -470,7 +257,7 @@
       <p>Complete energy solutions for homes, businesses and industries across Bangalore</p>
     </div>
     <div class="services-grid">
-      {#each services as svc}
+      {#each content.services as svc}
         <div class="service-card">
           {#if svc.badge}<span class="svc-badge">{svc.badge}</span>{/if}
           <div class="svc-icon">{svc.icon}</div>
@@ -492,7 +279,7 @@
       <p>Simple, transparent, and hassle-free — from your first call to final handover</p>
     </div>
     <div class="workflow-grid">
-      {#each workflow as step}
+      {#each content.workflow as step}
         <div class="wf-step">
           <div class="wf-num">{step.num}</div>
           <h3>{step.title}</h3>
@@ -528,12 +315,12 @@
       <p>Trusted by homeowners and businesses across South Bangalore</p>
     </div>
     <div class="testi-grid">
-      {#each testimonials as t}
+      {#each content.testimonials as t}
         <div class="testi-card">
-          <div class="testi-stars">{'⭐'.repeat(t.stars)}</div>
+          <div class="testi-stars">⭐⭐⭐⭐⭐</div>
           <p>"{t.text}"</p>
           <div class="testi-author">
-            <div class="testi-avatar">{t.name[0]}</div>
+            <div class="testi-avatar">{(t.name || '?')[0]}</div>
             <div><strong>{t.name}</strong><span>📍 {t.location}</span></div>
           </div>
         </div>
@@ -551,11 +338,11 @@
         <p>Get a FREE site visit and customised quote for your Bangalore property today</p>
       </div>
       <div class="cta-actions">
-        <button class="cta-wa" on:click={() => whatsapp('Hi PVR Energy! I want a FREE solar consultation.')}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-          WhatsApp: +91 90360 99917
+        <button class="cta-wa" on:click={() => whatsapp(`Hi ${b.name}! I want a FREE solar consultation.`)}>
+          <WaIcon size={20} />
+          WhatsApp: {b.phoneDisplay}
         </button>
-        <a href="mailto:info@pvrenergysolutions.in" class="cta-email">📧 info@pvrenergysolutions.in</a>
+        <a href="mailto:{b.email}" class="cta-email">📧 {b.email}</a>
       </div>
     </div>
   </div>
@@ -566,31 +353,31 @@
   <div class="container">
     <div class="section-header">
       <div class="section-tag">📞 Get In Touch</div>
-      <h2>Contact PVR Energy Solutions</h2>
+      <h2>Contact {b.name} {b.tagline}</h2>
       <p>Reach us on WhatsApp, email or visit us in Bangalore</p>
     </div>
     <div class="contact-grid">
       <div class="contact-info">
         <div class="ci-item">
           <div class="ci-icon">📍</div>
-          <div><strong>Service Area</strong><p>Bangalore, Karnataka — 560100<br/>Serving: Electronic City, Anekal, Attibele, Jigani, Hosa Road</p></div>
+          <div><strong>Service Area</strong><p>{b.address}<br/>{b.serviceAreas}</p></div>
         </div>
         <div class="ci-item">
           <div class="ci-icon">📱</div>
-          <div><strong>WhatsApp / Call</strong><p>+91 90360 99917</p><button class="contact-wa-btn" on:click={() => whatsapp()}>Open WhatsApp Chat</button></div>
+          <div><strong>WhatsApp / Call</strong><p>{b.phoneDisplay}</p><button class="contact-wa-btn" on:click={() => whatsapp()}>Open WhatsApp Chat</button></div>
         </div>
         <div class="ci-item">
           <div class="ci-icon">📧</div>
-          <div><strong>Email</strong><p><a href="mailto:info@pvrenergysolutions.in">info@pvrenergysolutions.in</a></p></div>
+          <div><strong>Email</strong><p><a href="mailto:{b.email}">{b.email}</a></p></div>
         </div>
         <div class="ci-item">
           <div class="ci-icon">🕐</div>
-          <div><strong>Working Hours</strong><p>Monday – Saturday: 9:00 AM – 6:00 PM<br/>Sunday: On appointment only</p></div>
+          <div><strong>Working Hours</strong><p class="preline">{b.hours}</p></div>
         </div>
       </div>
       <div class="contact-form-wrap">
         <h3>Send us a Message</h3>
-        <form class="contact-form" on:submit|preventDefault={(e) => { const fd = new FormData(e.target); whatsapp(`Name: ${fd.get('name')}\nPhone: ${fd.get('phone')}\nMessage: ${fd.get('message')}`); }}>
+        <form class="contact-form" on:submit|preventDefault={(e) => { const fd = new FormData(e.target); whatsapp(`Name: ${fd.get('name')}\nPhone: ${fd.get('phone')}\nLocation: ${fd.get('location')}\nService: ${fd.get('service')}\nMessage: ${fd.get('message')}`); }}>
           <div class="cf-row">
             <div class="cf-group"><label for="name">Your Name *</label><input id="name" name="name" required placeholder="e.g. Rajesh Kumar"/></div>
             <div class="cf-group"><label for="phone">Phone Number *</label><input id="phone" name="phone" required placeholder="+91 98XXX XXXXX"/></div>
@@ -599,14 +386,12 @@
           <div class="cf-group">
             <label for="service">Service Required</label>
             <select id="service" name="service">
-              <option>Rooftop Solar Installation</option><option>Residential Solar</option>
-              <option>Commercial Solar</option><option>Solar Water Heater</option>
-              <option>Water Softener</option><option>UPS / Power Backup</option>
+              {#each content.services as s}<option>{s.title}</option>{/each}
             </select>
           </div>
           <div class="cf-group"><label for="message">Message</label><textarea id="message" name="message" rows="4" placeholder="Tell us about your property, electricity bill amount, rooftop size..."></textarea></div>
           <button type="submit" class="cf-submit">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+            <WaIcon size={18} />
             Send via WhatsApp
           </button>
         </form>
@@ -620,19 +405,17 @@
   <div class="container">
     <div class="footer-grid">
       <div class="footer-brand">
-        <div class="footer-logo">☀️ PVR Energy Solutions</div>
-        <p>Bangalore's trusted solar installation company. Serving Electronic City, Anekal, Attibele, Jigani and surrounding areas since 2022.</p>
+        <div class="footer-logo">☀️ {b.name} {b.tagline}</div>
+        <p>{b.footerAbout}</p>
         <button class="footer-wa" on:click={() => whatsapp()}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-          +91 90360 99917
+          <WaIcon size={16} />
+          {b.phoneDisplay}
         </button>
       </div>
       <div class="footer-col">
         <h4>Services</h4>
         <ul>
-          <li>Rooftop Solar Installation</li><li>Residential Solar Systems</li>
-          <li>Commercial Solar Solutions</li><li>Solar Water Heaters</li>
-          <li>Water Softeners</li><li>UPS &amp; Power Backup</li>
+          {#each content.services as s}<li>{s.title}</li>{/each}
         </ul>
       </div>
       <div class="footer-col">
@@ -646,15 +429,15 @@
       <div class="footer-col">
         <h4>Contact</h4>
         <ul>
-          <li>📱 +91 90360 99917</li>
-          <li>📧 info@pvrenergysolutions.in</li>
-          <li>📍 Bangalore, Karnataka</li>
-          <li>🕐 Mon–Sat: 9AM–6PM</li>
+          <li>📱 {b.phoneDisplay}</li>
+          <li>📧 {b.email}</li>
+          <li>📍 {b.location}</li>
+          <li>🕐 {b.footerHours}</li>
         </ul>
       </div>
     </div>
     <div class="footer-bottom">
-      <p>© 2025 PVR Energy Solutions. All rights reserved. | Bangalore, Karnataka</p>
+      <p>© {new Date().getFullYear()} {b.name} {b.tagline}. All rights reserved. | {b.location}</p>
       <p>Designed &amp; Developed by <strong>SRDN Technologies</strong></p>
     </div>
   </div>
@@ -672,6 +455,7 @@
     --green:#16a34a;--navy:#0f172a;--text:#374151;--text-light:#6b7280;
     --border:#e5e7eb;--wa-green:#25d366;--wa-dark:#128c7e;
   }
+  .preline{white-space:pre-line;}
   .container{max-width:1200px;margin:0 auto;padding:0 20px;}
   .section{padding:80px 0;}
   .section-alt{background:#f9fafb;}
@@ -717,60 +501,24 @@
   @media(max-width:900px){.nav-links{display:none;}.nav-hamburger{display:flex;align-items:center;justify-content:center;}}
   @media(max-width:600px){.nav-quote{display:none;}}
 
-  /* ADMIN */
-  .admin-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px;}
-  .admin-panel{background:#fff;border-radius:16px;width:100%;max-width:680px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,.25);}
-  .admin-hdr{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--border);}
-  .admin-hdr h3{font-size:16px;font-weight:700;color:var(--navy);}
-  .admin-hdr button{background:none;border:none;font-size:20px;color:#9ca3af;}
-  .admin-login{padding:28px 22px;display:flex;flex-direction:column;gap:12px;}
-  .admin-login p{color:var(--text-light);font-size:14px;}
-  .admin-login input{border:1.5px solid var(--border);border-radius:8px;padding:10px 14px;font-size:14px;outline:none;}
-  .admin-login button{background:var(--orange);color:#fff;border:none;border-radius:8px;padding:10px;font-weight:700;}
-  .admin-error{color:#dc2626;font-size:13px;}
-  .admin-body{padding:22px;display:flex;flex-direction:column;gap:20px;}
-  .admin-body h4{font-size:13px;font-weight:700;color:var(--navy);margin-bottom:8px;}
-  .admin-new-section{display:flex;flex-direction:column;gap:10px;}
-  .admin-new-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
-  .admin-new-row input,.admin-new-row select{border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-size:13px;outline:none;}
-  .upload-btn{display:inline-flex;align-items:center;gap:6px;background:var(--orange);color:#fff;border:none;border-radius:8px;padding:10px 18px;font-weight:600;font-size:13px;cursor:pointer;width:fit-content;}
-  .admin-url-row{display:flex;gap:8px;}
-  .admin-url-row input{flex:1;border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-size:13px;outline:none;}
-  .admin-url-row button{background:var(--green);color:#fff;border:none;border-radius:8px;padding:9px 18px;font-weight:700;font-size:13px;}
-  .admin-imgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-top:8px;}
-  .admin-img-card{border:1px solid var(--border);border-radius:8px;overflow:hidden;display:flex;flex-direction:column;position:relative;}
-  .admin-img-card.is-unpublished{opacity:.5;}
-  .admin-offer-tag{position:absolute;top:6px;left:6px;z-index:1;background:#ef4444;color:#fff;font-size:9px;font-weight:800;padding:2px 7px;border-radius:999px;}
-  .admin-img-card img{width:100%;height:100px;object-fit:cover;}
-  .admin-img-card p{font-size:10px;padding:5px 8px;color:var(--text-light);}
-  .admin-img-actions{display:flex;flex-direction:column;gap:2px;padding:0 6px 6px;}
-  .aia-btn{background:#f3f4f6;color:var(--text);border:none;padding:5px;font-size:10px;font-weight:600;cursor:pointer;border-radius:4px;}
-  .aia-remove{background:#fef2f2;color:#dc2626;}
-
-  /* ══ HERO ═══════════════════════════════════════════════ */
+  /* ══ HERO ══ */
   .hero{
     min-height:calc(100vh - 107px);
     background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 50%,#164e35 100%);
     position:relative;overflow:hidden;display:flex;flex-direction:column;
     justify-content:center;padding:80px 20px 40px;color:#fff;
   }
-
-  /* Background slide carousel */
   .hero-slides{position:absolute;inset:0;z-index:0;}
   .hero-slide{position:absolute;inset:0;background-size:cover;background-position:center;opacity:0;transition:opacity 1.4s ease;}
   .hero-slide.active{opacity:.28;}
   .hero-slide-overlay{position:absolute;inset:0;z-index:0;background:linear-gradient(135deg,rgba(15,23,42,.65) 0%,rgba(30,58,95,.55) 50%,rgba(22,78,53,.6) 100%);}
 
-  /* Two-column row */
   .hero-row{
     position:relative;z-index:1;max-width:1200px;margin:0 auto;width:100%;
     display:grid;grid-template-columns:1fr 420px;gap:48px;align-items:center;
   }
-
-  /* Left: English content */
-  .hero-content{}
   .hero-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(249,115,22,.2);border:1px solid rgba(249,115,22,.4);color:#fed7aa;font-size:13px;font-weight:600;padding:6px 14px;border-radius:999px;margin-bottom:20px;}
-  .hero-content h1{font-size:clamp(32px,5vw,58px);font-weight:900;line-height:1.1;margin-bottom:16px;text-shadow:0 2px 20px rgba(0,0,0,.3);}
+  .hero-content h1{font-size:clamp(32px,5vw,58px);font-weight:900;line-height:1.1;margin-bottom:16px;text-shadow:0 2px 20px rgba(0,0,0,.3);white-space:pre-line;}
   .hero-content p{font-size:16px;color:#cbd5e1;margin-bottom:32px;}
   .hero-actions{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:32px;}
   .hero-btn{display:flex;align-items:center;gap:8px;border:none;border-radius:12px;padding:14px 26px;font-size:15px;font-weight:700;transition:all 0.2s;}
@@ -781,7 +529,6 @@
   .hero-tags{display:flex;gap:8px;flex-wrap:wrap;}
   .hero-tags span{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#e2e8f0;font-size:12px;font-weight:500;padding:4px 12px;border-radius:999px;}
 
-  /* Right: Kannada card */
   .hero-kannada{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;}
   .kn-card{
     background:linear-gradient(145deg, rgba(255,255,255,.12), rgba(255,255,255,.06));
@@ -796,37 +543,22 @@
   .kn-title{
     font-family:'Noto Sans Kannada','Poppins',sans-serif;
     font-size:28px;font-weight:800;color:#fff;
-    line-height:1.3;margin-bottom:8px;text-align:center;
+    line-height:1.3;margin-bottom:8px;text-align:center;white-space:pre-line;
     text-shadow:0 2px 12px rgba(0,0,0,.3);
   }
-  .kn-sub{
-    font-family:'Noto Sans Kannada','Poppins',sans-serif;
-    font-size:14px;color:#fed7aa;text-align:center;font-weight:500;margin-bottom:16px;
-  }
+  .kn-sub{font-family:'Noto Sans Kannada','Poppins',sans-serif;font-size:14px;color:#fed7aa;text-align:center;font-weight:500;margin-bottom:16px;}
   .kn-divider{height:1px;background:rgba(255,255,255,.2);margin:16px 0;}
   .kn-points{list-style:none;display:flex;flex-direction:column;gap:10px;margin-bottom:20px;}
-  .kn-points li{
-    display:flex;align-items:center;gap:10px;
-    font-family:'Noto Sans Kannada','Poppins',sans-serif;
-    font-size:13px;color:#e2e8f0;font-weight:500;
-  }
+  .kn-points li{display:flex;align-items:center;gap:10px;font-family:'Noto Sans Kannada','Poppins',sans-serif;font-size:13px;color:#e2e8f0;font-weight:500;}
   .kn-dot{width:8px;height:8px;border-radius:50%;background:#4ade80;box-shadow:0 0 6px rgba(74,222,128,.7);flex-shrink:0;}
   .kn-btn{
-    width:100%;background:var(--orange);color:#fff;border:none;
-    border-radius:10px;padding:12px;
-    font-family:'Noto Sans Kannada','Poppins',sans-serif;
-    font-size:15px;font-weight:700;
-    transition:background 0.15s,transform 0.15s;
-    margin-bottom:12px;
-    box-shadow:0 4px 16px rgba(249,115,22,.4);
+    width:100%;background:var(--orange);color:#fff;border:none;border-radius:10px;padding:12px;
+    font-family:'Noto Sans Kannada','Poppins',sans-serif;font-size:15px;font-weight:700;
+    transition:background 0.15s,transform 0.15s;margin-bottom:12px;box-shadow:0 4px 16px rgba(249,115,22,.4);
   }
   .kn-btn:hover{background:var(--orange-dark);transform:translateY(-1px);}
-  .kn-number{
-    font-family:'Poppins',sans-serif;
-    text-align:center;color:#94a3b8;font-size:13px;
-  }
+  .kn-number{font-family:'Poppins',sans-serif;text-align:center;color:#94a3b8;font-size:13px;}
 
-  /* Bottom caption (per-slide, "info down") + radio-dot navigation */
   .hero-bottom-bar{
     position:relative;z-index:1;max-width:1200px;margin:40px auto 0;width:100%;
     display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:18px;
@@ -840,7 +572,6 @@
   .hero-dot:hover{background:rgba(255,255,255,.65);}
   .hero-dot.active{width:30px;background:var(--orange);box-shadow:0 0 10px rgba(249,115,22,.6);}
 
-  /* Stats row */
   .hero-stats{position:relative;z-index:1;max-width:1200px;margin:32px auto 0;width:100%;display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:rgba(255,255,255,.1);border-radius:16px;overflow:hidden;}
   .hero-stat{background:rgba(0,0,0,.2);backdrop-filter:blur(10px);padding:24px;text-align:center;}
   .hs-num{font-size:36px;font-weight:900;color:var(--orange);}
@@ -861,9 +592,9 @@
   .about-img{width:100%;border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.15);object-fit:cover;height:480px;}
   .about-img-badge{position:absolute;bottom:-20px;right:-20px;background:var(--orange);color:#fff;border-radius:16px;padding:20px 24px;text-align:center;box-shadow:0 8px 24px rgba(249,115,22,.4);}
   .aib-num{font-size:40px;font-weight:900;line-height:1;}
-  .aib-label{font-size:12px;font-weight:600;line-height:1.4;}
+  .aib-label{font-size:12px;font-weight:600;line-height:1.4;white-space:pre-line;}
   .about-content{display:flex;flex-direction:column;gap:16px;}
-  .about-content h2{font-size:clamp(26px,4vw,38px);font-weight:800;color:var(--navy);line-height:1.2;}
+  .about-content h2{font-size:clamp(26px,4vw,38px);font-weight:800;color:var(--navy);line-height:1.2;white-space:pre-line;}
   .about-content p{color:var(--text);line-height:1.8;font-size:15px;}
   .about-highlights{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:8px 0;}
   .ah-item{display:flex;align-items:flex-start;gap:10px;background:#f9fafb;border-radius:10px;padding:12px;}
